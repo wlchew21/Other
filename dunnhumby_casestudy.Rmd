@@ -1,0 +1,251 @@
+---
+title: "dunnhumby Pasta Case Study"
+author: "Bill Chew"
+date: "April 8, 2019"
+output: 
+  html_document:
+    toc: true
+---
+
+NOTE: Code intentionally left visible in output for purposes of interview discussion
+
+
+```{r setup}
+knitr::opts_chunk$set(message=FALSE, warning=FALSE, echo=TRUE) #echo = FALSE will hide all code
+```
+
+```{r packages}
+library(readr)
+library(dplyr)
+library(knitr)
+library(kableExtra)
+```
+
+
+```{r import}
+# Set working directory to files location - 
+# NOTE working directory resets to location of .Rmd file in other code chunks
+
+setwd(paste0("C:\\Users\\wlche\\OneDrive - University of Iowa\\",
+        "GitHub_Projects\\Other\\dunnhumby_CaseStudy\\",
+        "dunnhumby_Carbo-Loading\\dunnhumby - Carbo-Loading CSV"))
+
+# Read in all data
+transactions <- read_csv("dh_transactions.csv")
+store_lookup <- read_csv("dh_store_lookup.csv")
+product_lookup <- read_csv("dh_product_lookup.csv")
+product_lookup$upc <- as.character(product_lookup$upc)
+#causal_lookup_1 <- read_csv("dh_causal_lookup_1.csv")  # empty csv file
+causal_lookup <- read_csv("dh_causal_lookup.csv")
+
+# Join data together, automatically finds correct join variables
+full.data <- transactions %>% 
+  left_join(store_lookup) %>% 
+  left_join(product_lookup) %>% 
+  left_join(causal_lookup)
+
+```
+
+# Top 5 products in each commodity
+
+```{r volumeprod}
+# Calculate total volume for each product and rank overall and within commodity
+volume.products <- full.data %>% 
+  group_by(commodity,brand, product_description, product_size, upc) %>% 
+  summarize(total_volume = sum(units)) %>%
+  ungroup() %>% 
+  mutate(overall_rank = rank(-total_volume, ties.method = 'min')) %>%
+  group_by(commodity) %>%
+  mutate(commodity_rank = rank(-total_volume, ties.method = 'min'))
+
+# Display the top 5 products for each commodity
+volume.products %>%
+  filter(commodity_rank <= 5) %>%
+  arrange(commodity,overall_rank) %>% 
+  kable() %>%
+  pack_rows(index = c("Pancake Mixes" = 5, "Pasta" = 5, "Pasta Sauce" = 5, "Syrups" = 5, "NA" = 5)) %>%
+  kable_styling(full_width = T)
+
+```
+
+* The above table shows the top 5 products for each commodity in terms of sales volume.
+
+* For Pasta, the top 5 pasta products are all private label and are the 16oz thin spaghetti, regular spaghetti, angel hair, elbo macaroni and the 7oz thin spaghetti.  
+
+* The top 5 pasta products are all top 10 volume products across all commodities.
+
+# Top 5 brands in each commodity
+
+```{r volumebrand}
+# Calculate the total volume of each brand in each commodity and rank overall and within commmodity 
+volume.brands <- full.data %>% 
+  group_by(commodity,brand) %>% 
+  summarize(total_volume = sum(units)) %>%
+  ungroup() %>% 
+  mutate(overall_rank = rank(-total_volume, ties.method = 'min')) %>%
+  group_by(commodity) %>% 
+  mutate(commodity_rank = rank(-total_volume, ties.method = 'min'))
+
+# Display the top 5 brands (in volume) in each commodity
+volume.brands %>% 
+  filter(commodity_rank <= 5) %>%
+  arrange(commodity, overall_rank) %>%
+  kable() %>%
+  pack_rows(index = c("Pancake Mixes" = 5, "Pasta" = 5, "Pasta Sauce" = 5, "Syrups" = 5, "NA" = 1)) %>%
+  kable_styling(full_width = T)
+```
+
+* The above table shows the top 5 brands for each commodity in terms of sales volume.
+
+* For Pasta, the top 5 brands are Private Label, Barilla, Creamette, Mueller, and Private Label Premium.
+
+* The top 5 pasta brands are all top 10 volume brands across all commodities.
+
+# Brands and Customers that drive sales in each commodity
+
+```{r salesbrand}
+# Calculate total sales for each brand in a commodity and rank overall and within commodity
+sales.brands <- full.data %>% 
+  group_by(commodity,brand) %>%
+  summarize(total_sales = sum(dollar_sales)) %>%
+  ungroup() %>% 
+  mutate(overall_rank = rank(-total_sales, ties.method = 'min')) %>%
+  group_by(commodity) %>% 
+  mutate(commodity_rank = rank(-total_sales,ties.method = 'min'))
+
+# Display the top 5 brands (in sales) in each commodity
+sales.brands %>% 
+  filter(commodity_rank <= 5) %>%
+  arrange(commodity,overall_rank) %>% 
+  kable() %>%
+  pack_rows(index = c("Pancake Mixes" = 5, "Pasta" = 5, "Pasta Sauce" = 5, "Syrups" = 5, "NA" = 1)) %>%
+  kable_styling(full_width = T)
+```
+
+
+* The above table shows the top 5 brands in each commodity in terms of their sales dollars.
+
+* The top 5 brands driving Pasta sales are Private Label, Barilla, Creamette, Mueller, and Ronzoni
+
+* These 5 Pasta brands are among the top 13 brands for sales dollars.
+
+
+```{r salescust}
+# Calculate total sales for each commodity of each household and rank overall (household by commodity)
+# and within a commodity
+sales.customers <- full.data %>% 
+  group_by(household, commodity) %>%
+  summarize(commodity_sales = sum(dollar_sales)) %>%
+  ungroup() %>% 
+  mutate(overall_rank = rank(-commodity_sales, ties.method = 'min')) %>%
+  group_by(commodity) %>% 
+  mutate(commodity_rank = rank(-commodity_sales, ties.method = 'min'))
+
+# Rank households overall on their total buy across commodities  
+customer.ranks <- full.data %>%
+  group_by(household) %>%
+  summarize(household_sales = sum(dollar_sales)) %>%
+  ungroup() %>% 
+  mutate(household_rank = rank(-household_sales, ties.method = 'min'))
+
+# Display the top 5 customers in each commodity
+sales.customers %>% 
+  left_join(customer.ranks) %>% 
+  filter(commodity_rank <= 5) %>%
+  arrange(commodity,commodity_rank) %>%
+  kable() %>%
+  pack_rows(index = c("Pancake Mixes" = 5, "Pasta" = 5, "Pasta Sauce" = 5, "Syrups" = 5, "NA" = 5)) %>%
+  kable_styling(full_width = T)
+
+```
+
+* The above table shows the top 5 customers of each commodity in terms of sales dollars.
+
+* For Pasta, the top 5 customers driving pasta sales are in the top 17 among all commodities sales.
+
+* These top 5 Pasta customers are also in the top 121 highest spending households.
+
+# Repeat rate for each commodity
+
+```{r repeat}
+# Calculate the repeat rate for each household in each commodity
+repeat.rate <- full.data %>%
+  group_by(commodity, household) %>%
+  summarize(n_transactions = n()) %>%
+  group_by(commodity) %>%
+  summarize(repeat_rate = sum(n_transactions > 1) / sum(n_transactions))
+
+# Display repeat rates, round and convert to display as percentage
+repeat.rate %>% 
+mutate(repeat_rate = paste0(round(100*repeat_rate,2),"%")) %>% 
+  kable() %>% kable_styling()
+```
+
+* The above table shows the repeat rate for each commodity.
+
+* Pasta has the lowest repeat purchase rate of 12.18%
+
+# Health of the category: Pasta
+
+```{r summary}
+# Calculate Total volume for each commodity
+volume.commodity <- volume.brands %>%
+  group_by(commodity) %>%
+  summarize(total_volume = sum(total_volume))
+
+# Calculate total sales for each commodity
+sales.commodity <- sales.brands %>%
+  group_by(commodity) %>%
+  summarize(total_sales = sum(total_sales))
+
+# Join together the repeat rate, volume, and sales for each commodity
+commodity.summary <- repeat.rate %>% 
+  left_join(volume.commodity) %>% 
+  left_join(sales.commodity)
+
+# Display the repeat rate (as %), volume, and sales for each commodity
+commodity.summary %>% 
+  mutate(repeat_rate1 = repeat_rate,
+         repeat_rate = paste0(round(100*repeat_rate,2),"%"),
+         volume_rank = rank(-total_volume),
+         sales_rank = rank(-total_sales),
+         repeat_rank = rank(-repeat_rate1)) %>%
+  select(-repeat_rate1) %>%
+  kable() %>% kable_styling()
+```
+
+* The above table gives a snapshot of how the categories compare with eachother.
+
+* Pasta has the largest volume and second largest sales dollars but the worst repeat rate. 
+
+
+# Other Pasta Insights
+
+```{r other}
+# Pasta Volume, total volume, total sales, average # units per transaction,
+# Proportion of transactions buying more than 1 of the product
+other.volume <- full.data %>% 
+  group_by(commodity,brand, product_description, product_size, upc) %>% 
+  summarize(total_volume = sum(units),
+            total_sales = sum(dollar_sales),
+            price_per_unit = round(sum(dollar_sales)/sum(units),2)) %>%
+  group_by(commodity) %>%
+  mutate(vol_rank = rank(-total_volume, ties.method = 'min'),
+         sales_rank = rank(-total_sales, ties.method = 'min')) %>%
+  filter(commodity =="pasta")
+
+# Display top 5 in volume
+other.volume %>%
+  filter(vol_rank <= 5) %>% 
+  arrange(vol_rank) %>%
+  kable() %>% kable_styling()
+```
+
+* The above table displays the top 5 pasta products ordered by total volume (among all pasta products) along with their total dollar sales, average price per unit, volume ranking among all pasta products, and sales rank among all pasta products.
+
+* The top 3 pasta products by total volume are also the top 3 products by total dollar sales.  The 4th and 5th best volume products are 8th and 30th in total sales. 
+
+* The top 3 pasta products by total volume (and total sales) have similar average prices per unit, while the elbo macaroni (4th highest volume and 8th largest total sales) pasta has a slightly higher average price per unit.   
+
+* The 7oz thin spaghetti has a much lower price per unit which may help explain why it is 30th in total sales.
+
